@@ -1,0 +1,7 @@
+**
+!src/
+!src/Landing.Api/
+!src/Landing.Api/**
+**/bin
+**/obj
+**/*.user

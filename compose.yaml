@@ -1,0 +1,60 @@
+x-app: &app
+  image: algoref-landing-api:local
+  build: .
+  environment:
+    ASPNETCORE_ENVIRONMENT: Development
+    ConnectionStrings__Landing: "Host=postgres;Port=5432;Database=algoref_landing;Username=landing"
+    LandingDb__Password: ${POSTGRES_PASSWORD:-landing_local}
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: algoref_landing
+      POSTGRES_USER: landing
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-landing_local}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - landing_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U landing -d algoref_landing"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    <<: *app
+    command: ["--migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Landing: "Host=postgres;Port=5432;Database=algoref_landing;Username=landing"
+      LandingDb__Password: ${POSTGRES_PASSWORD:-landing_local}
+      LocalAuth__AllowContainerNetwork: "true"
+    ports:
+      - "127.0.0.1:5180:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  seed:
+    image: postgres:17
+    profiles: ["tools"]
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-landing_local}
+    volumes:
+      - ./db/seed.sql:/seed.sql:ro
+    command: ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", "postgres", "-U", "landing", "-d", "algoref_landing", "-f", "/seed.sql"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  landing_data:
